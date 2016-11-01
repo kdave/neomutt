@@ -1707,8 +1707,16 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
   int col_min_width = 78;
 
   /* compute here for first display */
-  if ((COLS - SidebarWidth) > col_min_width)
-    col_max = (COLS - SidebarWidth) / col_min_width;
+  if ((COLS
+#ifdef USE_SIDEBAR
+			  - SidebarWidth
+#endif
+			  ) > col_min_width)
+    col_max = (COLS
+#ifdef USE_SIDEBAR
+		    - SidebarWidth
+#endif
+		    ) / col_min_width;
 
   if (!(flags & MUTT_SHOWCOLOR))
     flags |= MUTT_SHOWFLAT;
@@ -1923,15 +1931,29 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
         int bodylen = pager_window->rows;
 
 	/* recompute in place for WINCH */
-	if ((COLS - SidebarWidth) > col_min_width)
-	  col_max = (COLS - SidebarWidth) / col_min_width;
+	if ((COLS
+#ifdef USE_SIDEBAR
+				- SidebarWidth
+#endif
+				) > col_min_width)
+	  col_max = (COLS
+#ifdef USE_SIDEBAR
+			  - SidebarWidth
+#endif
+			  ) / col_min_width;
 
+#ifdef USE_SIDEBAR
 	/* For header */
 	if (option(OPTSIDEBAR))
 	  Wrap -= SidebarWidth;
+#endif
 
 	bodylen2 = col_max * bodylen;
-	col_shift = (COLS - SidebarWidth) / col_max;
+	col_shift = (COLS
+#ifdef USE_SIDEBAR
+			- SidebarWidth
+#endif
+			) / col_max;
 
         mutt_window_move (pager_window, 0, 0);
 	curline = oldtopline = topline;
