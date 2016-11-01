@@ -1724,7 +1724,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     mutt_set_flag (Context, extra->hdr, MUTT_READ, 1);
   }
 
-  lineInfo = safe_malloc (sizeof (struct line_t) * (maxLine = LINES));
+  maxLine = 2 * LINES;
+  lineInfo = safe_malloc (sizeof (struct line_t) * maxLine);
   for (i = 0 ; i < maxLine ; i++)
   {
     memset (&lineInfo[i], 0, sizeof (struct line_t));
@@ -1896,23 +1897,53 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     if ((redraw & REDRAW_BODY) || topline != oldtopline)
     {
       do {
+        int col2_woff = 0;
+        int header_skip = 0;
+        int header_size = 0;
+        int lines2 = 0;
+        int bodylen2 = 2 * pager_window->rows;
+        int col = 1;
+        int oldwrap = Wrap;
+        int oldreflowwrap = ReflowWrap;
+
         mutt_window_move (pager_window, 0, 0);
 	curline = oldtopline = topline;
 	lines = 0;
 	force_redraw = 0;
 
-	while (lines < pager_window->rows && lineInfo[curline].offset <= sb.st_size - 1)
+        while (lines2 < bodylen2 && lineInfo[curline].offset <= sb.st_size - 1)
 	{
+	  if (col == 2 && lines >= bodylen - header_skip) {
+	    break;
+	  }
 	  if (display_line (fp, &last_pos, &lineInfo, curline, &lastLine, 
 			    &maxLine,
 			    (flags & MUTT_DISPLAYFLAGS) | hideQuoted | SearchFlag | (flags & MUTT_PAGER_NOWRAP),
 			    &QuoteList, &q_level, &force_redraw, &SearchRE,
-                            pager_window) > 0)
+                            pager_window) > 0) {
 	    lines++;
+	    lines2++;
+	  }
+	  if (ISHEADER(lineInfo[curline].type)) {
+		  header_size++;
+	  } else {
+		  ReflowWrap = Wrap = (COLS - SidebarWidth) / 2 - 1;
+	  }
+	  /* dprint (2, (debugfile, "C2: c %d l %d l2 %d cur %d\n", col, lines, lines2, curline)); */
+	  if (col == 1 && lines2 >= bodylen) {
+		  col = 2;
+		  col2_woff = (COLS - SidebarWidth) / 2;
+		  lines = 0;
+		  header_skip = header_size ? header_size + 1 : 0;
+	  }
 	  curline++;
-          mutt_window_move (pager_window, lines, 0);
+          mutt_window_move (pager_window, lines + header_skip, col2_woff);
 	}
 	last_offset = lineInfo[curline].offset;
+	Wrap = oldwrap;
+	ReflowWrap = oldreflowwrap;
+	if (lines2 > bodyline)
+		lines = bodyline;
       } while (force_redraw);
 
       SETCOLOR (MT_COLOR_TILDE);
