@@ -2215,6 +2215,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  lineInfo[i].chunks = 0;
 	  lineInfo[i].search_cnt = -1;
 	  lineInfo[i].quote = NULL;
+	  lineInfo[i].is_cont_hdr = 0;
 
 	  safe_realloc (&(lineInfo[i].syntax),
 			sizeof (struct syntax_t));
@@ -2811,6 +2812,7 @@ search_next:
 	    lineInfo[i].chunks = 0;
 	    lineInfo[i].search_cnt = -1;
 	    lineInfo[i].quote = NULL;
+	    lineInfo[i].is_cont_hdr = 0;
 
 	    safe_realloc (&(lineInfo[i].syntax), sizeof (struct syntax_t));
 	    if (SearchCompiled && lineInfo[i].search)
