@@ -1180,6 +1180,11 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
   mbstate_t mbstate;
   int wrap_cols = mutt_window_wrap_cols (pager_window, (flags & MUTT_PAGER_NOWRAP) ? 0 : Wrap);
 
+  /* wrap_cols = 70; */
+
+  dprint (2, (debugfile, "pager: fmt wrap? %d Wrap %d wc %d\n",
+	(flags & M_PAGER_NOWRAP), Wrap, wrap_cols));
+
   if (check_attachment_marker ((char *)buf) == 0)
     wrap_cols = pager_window->cols;
 
@@ -1700,14 +1705,11 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 #endif
   
   int col_max;				/* Number of columns */
-  int col_min_width = 60;
+  int col_min_width = 61;
 
   /* compute here for first display */
-  if ((COLS - SidebarWidth) > col_min_width) {
-    dprint (2, (debugfile, "pager: cols=%d lines=%d flagsWINCH %d\n", COLS, LINES, flags & M_PAGER_RETWINCH));
+  if ((COLS - SidebarWidth) > col_min_width)
     col_max = (COLS - SidebarWidth) / col_min_width;
-  }
-
 
   if (!(flags & MUTT_SHOWCOLOR))
     flags |= MUTT_SHOWFLAT;
@@ -1922,10 +1924,11 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
         int bodylen = pager_window->rows;
 
 	/* recompute in place for WINCH */
-	if ((COLS - SidebarWidth) > col_min_width) {
-	  dprint (2, (debugfile, "pager: cols=%d lines=%d flagsWINCH %d\n", COLS, LINES, flags & M_PAGER_RETWINCH));
+	if ((COLS - SidebarWidth) > col_min_width)
 	  col_max = (COLS - SidebarWidth) / col_min_width;
-	}
+
+	/* For header */
+	/* Wrap -= SidebarWidth; */
 
 	bodylen2 = col_max * bodylen;
 	col_shift = (COLS - SidebarWidth) / col_max;
@@ -1964,6 +1967,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  if (ISHEADER(lineInfo[curline].type)) {
 		  header_size++;
 	  } else {
+		  dprint (2, (debugfile, "pager: cols %d sw %d cshift %d wrap %d\n",
+					  COLS, SidebarWidth, col_shift, Wrap));
 		  ReflowWrap = Wrap = col_shift - 1;
 	  }
 	  if ((col == 1 && lines2 >= bodylen) ||
