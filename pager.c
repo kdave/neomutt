@@ -1178,9 +1178,8 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
   int ch, vch, last_special = -1, special = 0, t;
   wchar_t wc;
   mbstate_t mbstate;
+  /* Wrap is supposed to be set by the caller to the right value */
   int wrap_cols = mutt_window_wrap_cols (pager_window, (flags & MUTT_PAGER_NOWRAP) ? 0 : Wrap);
-
-  /* wrap_cols = 70; */
 
   dprint (2, (debugfile, "pager: fmt wrap? %d Wrap %d wc %d\n",
 	(flags & M_PAGER_NOWRAP), Wrap, wrap_cols));
@@ -1928,7 +1927,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  col_max = (COLS - SidebarWidth) / col_min_width;
 
 	/* For header */
-	/* Wrap -= SidebarWidth; */
+	if (option(OPTSIDEBAR))
+	  Wrap -= SidebarWidth;
 
 	bodylen2 = col_max * bodylen;
 	col_shift = (COLS - SidebarWidth) / col_max;
