@@ -1182,7 +1182,7 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
   int wrap_cols = mutt_window_wrap_cols (pager_window, (flags & MUTT_PAGER_NOWRAP) ? 0 : Wrap);
 
   dprint (2, (debugfile, "pager: fmt wrap? %d Wrap %d wc %d\n",
-	(flags & M_PAGER_NOWRAP), Wrap, wrap_cols));
+	(flags & MUTT_PAGER_NOWRAP), Wrap, wrap_cols));
 
   if (check_attachment_marker ((char *)buf) == 0)
     wrap_cols = pager_window->cols;
@@ -1990,7 +1990,13 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 		  header_size++;
 	  } else {
 		  dprint (2, (debugfile, "pager: cols %d sw %d cshift %d wrap %d\n",
-					  COLS, SidebarWidth, col_shift, Wrap));
+					  COLS,
+#ifdef USE_SIDEBAR
+					  SidebarWidth
+#else
+					  -1
+#endif
+					  , col_shift, Wrap));
 		  ReflowWrap = Wrap = col_shift - 1;
 	  }
 	  if ((col == 1 && lines2 >= bodylen) ||
