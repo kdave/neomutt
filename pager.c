@@ -1698,6 +1698,16 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 #ifdef USE_NNTP
   char *followup_to;
 #endif
+  
+  int col_max;				/* Number of columns */
+  int col_min_width = 60;
+
+  /* compute here for first display */
+  if ((COLS - SidebarWidth) > col_min_width) {
+    dprint (2, (debugfile, "pager: cols=%d lines=%d flagsWINCH %d\n", COLS, LINES, flags & M_PAGER_RETWINCH));
+    col_max = (COLS - SidebarWidth) / col_min_width;
+  }
+
 
   if (!(flags & MUTT_SHOWCOLOR))
     flags |= MUTT_SHOWFLAT;
@@ -1724,7 +1734,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     mutt_set_flag (Context, extra->hdr, MUTT_READ, 1);
   }
 
-  maxLine = 2 * LINES;
+  maxLine = col_max * LINES;
   lineInfo = safe_malloc (sizeof (struct line_t) * maxLine);
   for (i = 0 ; i < maxLine ; i++)
   {
@@ -1871,7 +1881,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       mutt_show_error ();
     }
 
-    if (redraw & REDRAW_SIGWINCH)
+    /* FIXME: if something changes width, we need to go deeper, not just redraw */
+    if (0&& redraw & REDRAW_SIGWINCH)
     {
       i = -1;
       j = -1;
@@ -1894,27 +1905,53 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     }
 #endif
 
-    if ((redraw & REDRAW_BODY) || topline != oldtopline)
+    if ((redraw & REDRAW_BODY) || topline != oldtopline || redraw & REDRAW_SIGWINCH)
+    /* if ((redraw & REDRAW_BODY) || topline != oldtopline) */
     {
       do {
-        int col2_woff = 0;
+        int col_woff = 0;
         int header_skip = 0;
         int header_size = 0;
         int lines2 = 0;
-        int bodylen2 = 2 * pager_window->rows;
+        int bodylen2;
         int col = 1;
+	int col_shift;
         int oldwrap = Wrap;
         int oldreflowwrap = ReflowWrap;
+	int oldmarkers = option(OPTMARKERS);
+        int bodylen = pager_window->rows;
+
+	/* recompute in place for WINCH */
+	if ((COLS - SidebarWidth) > col_min_width) {
+	  dprint (2, (debugfile, "pager: cols=%d lines=%d flagsWINCH %d\n", COLS, LINES, flags & M_PAGER_RETWINCH));
+	  col_max = (COLS - SidebarWidth) / col_min_width;
+	}
+
+	bodylen2 = col_max * bodylen;
+	col_shift = (COLS - SidebarWidth) / col_max;
 
         mutt_window_move (pager_window, 0, 0);
 	curline = oldtopline = topline;
 	lines = 0;
 	force_redraw = 0;
 
+	set_option(OPTMARKERS);
+
+
         while (lines2 < bodylen2 && lineInfo[curline].offset <= sb.st_size - 1)
 	{
-	  if (col == 2 && lines >= bodylen - header_skip) {
+	  if (col > col_max)
 	    break;
+	  if (col == col_max && lines >= bodylen - header_skip)
+	    break;
+	  if (col > 1 ) {
+	    SETCOLOR (MT_COLOR_MARKERS);
+	    if (option (OPTASCIICHARS))
+	      addch ('|');
+	    else if (Charset_is_utf8)
+	      addstr ("\342\224\202"); /* WACS_VLINE */
+	    else
+	      addch (ACS_VLINE);
 	  }
 	  if (display_line (fp, &last_pos, &lineInfo, curline, &lastLine, 
 			    &maxLine,
@@ -1927,23 +1964,27 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  if (ISHEADER(lineInfo[curline].type)) {
 		  header_size++;
 	  } else {
-		  ReflowWrap = Wrap = (COLS - SidebarWidth) / 2 - 1;
+		  ReflowWrap = Wrap = col_shift - 1;
 	  }
-	  /* dprint (2, (debugfile, "C2: c %d l %d l2 %d cur %d\n", col, lines, lines2, curline)); */
-	  if (col == 1 && lines2 >= bodylen) {
-		  col = 2;
-		  col2_woff = (COLS - SidebarWidth) / 2;
-		  lines = 0;
-		  header_skip = header_size ? header_size + 1 : 0;
+	  if ((col == 1 && lines2 >= bodylen) ||
+		(col >= 2 && lines2 >= (col - 1) * (bodylen - header_skip) + bodylen)) {
+	    col++;
+	    col_woff += col_shift;
+	    lines = 0;
+	    header_skip = header_size ? header_size + 1 : 0;
 	  }
 	  curline++;
-          mutt_window_move (pager_window, lines + header_skip, col2_woff);
+          mutt_window_move (pager_window, lines + header_skip, col_woff);
 	}
 	last_offset = lineInfo[curline].offset;
+
+	if (!oldmarkers)
+	  unset_option(OPTMARKERS);
 	Wrap = oldwrap;
 	ReflowWrap = oldreflowwrap;
-	if (lines2 > bodyline)
-		lines = bodyline;
+
+	if (lines2 > bodylen)
+		lines = bodylen;
       } while (force_redraw);
 
       SETCOLOR (MT_COLOR_TILDE);
@@ -2140,6 +2181,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     else if (SigWinch)
     {
       mutt_resize_screen ();
+      dprint (2, (debugfile, "pager: sigwinch\n"));
 
       /* Store current position. */
       lines = -1;
