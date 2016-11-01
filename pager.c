@@ -1705,7 +1705,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 #endif
   
   int col_max;				/* Number of columns */
-  int col_min_width = 61;
+  int col_min_width = 78;
 
   /* compute here for first display */
   if ((COLS - SidebarWidth) > col_min_width)
