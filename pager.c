@@ -1216,8 +1216,13 @@ static int format_line(struct Line **line_info, int n, unsigned char *buf, int f
   int ch, vch, last_special = -1, special = 0, t;
   wchar_t wc;
   mbstate_t mbstate;
+  /* FIXME: if something changes width, we need to go deeper, not just redraw */
   int wrap_cols =
       mutt_window_wrap_cols(pager_window, (flags & MUTT_PAGER_NOWRAP) ? 0 : Wrap);
+
+  dprint (2, (debugfile, "pager: fmt wrap? %d Wrap %d wc %d\n",
+        (flags & MUTT_PAGER_NOWRAP), Wrap, wrap_cols));
+
 
   if (check_attachment_marker((char *) buf) == 0)
     wrap_cols = pager_window->cols;
@@ -1868,7 +1873,8 @@ static void pager_menu_redraw(struct Menu *pager_menu)
 
   if (pager_menu->redraw & REDRAW_FLOW)
   {
-    if (!(rd->flags & MUTT_PAGER_RETWINCH))
+    /* FIXME: if something changes width, we need to go deeper, not just redraw */
+    if (0&& !(rd->flags & MUTT_PAGER_RETWINCH))
     {
       rd->lines = -1;
       for (i = 0; i <= rd->topline; i++)
@@ -1882,6 +1888,7 @@ static void pager_menu_redraw(struct Menu *pager_menu)
         rd->line_info[i].chunks = 0;
         rd->line_info[i].search_cnt = -1;
         rd->line_info[i].quote = NULL;
+        lineInfo[i].is_cont_hdr = 0;
 
         safe_realloc(&(rd->line_info[i].syntax), sizeof(struct Syntax));
         if (rd->search_compiled && rd->line_info[i].search)
@@ -1912,29 +1919,113 @@ static void pager_menu_redraw(struct Menu *pager_menu)
   }
 #endif
 
+  /* if ((redraw & REDRAW_BODY) || topline != oldtopline || redraw & REDRAW_SIGWINCH) */
+
   if ((pager_menu->redraw & REDRAW_BODY) || rd->topline != rd->oldtopline)
   {
     do
     {
+      int col_woff = 0;
+      int header_skip = 0;
+      int header_size = 0;
+      int lines2 = 0;
+      int bodylen2;
+      int col = 1;
+      int col_shift;
+      int oldwrap = Wrap;
+      int oldreflowwrap = ReflowWrap;
+      int oldmarkers = option(OPTMARKERS);
+      int bodylen = rd->pager_window->rows;
+
+      /* recompute in place for WINCH */
+      if ((COLS
+#ifdef USE_SIDEBAR
+                               - SidebarWidth
+#endif
+                               ) > col_min_width)
+        col_max = (COLS
+#ifdef USE_SIDEBAR
+                         - SidebarWidth
+#endif
+                         ) / col_min_width;
+
+#ifdef USE_SIDEBAR
+       /* For header */
+      if (option(OPTSIDEBAR))
+        Wrap -= SidebarWidth;
+#endif
+
+      bodylen2 = col_max * bodylen;
+      col_shift = (COLS
+#ifdef USE_SIDEBAR
+                       - SidebarWidth
+#endif
+                       ) / col_max;
+
       mutt_window_move(rd->pager_window, 0, 0);
       rd->curline = rd->oldtopline = rd->topline;
       rd->lines = 0;
       rd->force_redraw = 0;
 
-      while (rd->lines < rd->pager_window->rows &&
+      set_option(OPTMARKERS);
+
+      while (lines2 < bodylen2 &&
              rd->line_info[rd->curline].offset <= rd->sb.st_size - 1)
       {
+        if (col > col_max)
+          break;
+        if (col == col_max && rd->lines >= rd->bodylen - header_skip)
+          break;
+        if (col > 1 ) {
+          SETCOLOR (MT_COLOR_MARKERS);
+          if (option (OPTASCIICHARS))
+            addch ('|');
+          else if (Charset_is_utf8)
+            addstr ("\342\224\202"); /* WACS_VLINE */
+          else
+            addch (ACS_VLINE);
+        }
         if (display_line(rd->fp, &rd->last_pos, &rd->line_info, rd->curline,
                          &rd->last_line, &rd->max_line,
                          (rd->flags & MUTT_DISPLAYFLAGS) | rd->hide_quoted |
                              rd->search_flag | (rd->flags & MUTT_PAGER_NOWRAP),
                          &rd->quote_list, &rd->q_level, &rd->force_redraw,
-                         &rd->search_re, rd->pager_window) > 0)
+                         &rd->search_re, rd->pager_window) > 0) {
           rd->lines++;
+          lines2++;
+        }
+        if (ISHEADER(lineInfo[curline].type)) {
+          header_size++;
+        } else {
+          dprint (2, (debugfile, "pager: cols %d sw %d cshift %d wrap %d\n",
+                                         COLS,
+#ifdef USE_SIDEBAR
+                                         SidebarWidth
+#else
+                                         -1
+#endif
+                                         , col_shift, Wrap));
+          ReflowWrap = Wrap = col_shift - 1;
+        }
+        if ((col == 1 && lines2 >= rd->bodylen) ||
+            (col >= 2 && lines2 >= (col - 1) * (rd->bodylen - header_skip) + rd->bodylen)) {
+          col++;
+          col_woff += col_shift;
+          rd->lines = 0;
+          header_skip = header_size ? header_size + 1 : 0;
+        }
+
         rd->curline++;
-        mutt_window_move(rd->pager_window, rd->lines, 0);
+        mutt_window_move(rd->pager_window, rd->lines + header_skip, col_woff);
       }
       rd->last_offset = rd->line_info[rd->curline].offset;
+      if (!oldmarkers)
+        unset_option(OPTMARKERS);
+      Wrap = oldwrap;
+      ReflowWrap = oldreflowwrap;
+
+      if (lines2 > bodylen)
+        lines = bodylen;
     } while (rd->force_redraw);
 
     SETCOLOR(MT_COLOR_TILDE);
@@ -2050,6 +2141,21 @@ int mutt_pager(const char *banner, const char *fname, int flags, struct Pager *e
 
   struct PagerRedrawData rd;
 
+  int col_max;                         /* Number of columns */
+  int col_min_width = 78;
+
+  /* compute here for first display */
+  if ((COLS
+#ifdef USE_SIDEBAR
+                         - SidebarWidth
+#endif
+                         ) > col_min_width)
+    col_max = (COLS
+#ifdef USE_SIDEBAR
+                   - SidebarWidth
+#endif
+                   ) / col_min_width;
+
   if (!(flags & MUTT_SHOWCOLOR))
     flags |= MUTT_SHOWFLAT;
 
@@ -2085,7 +2191,8 @@ int mutt_pager(const char *banner, const char *fname, int flags, struct Pager *e
     mutt_set_flag(Context, extra->hdr, MUTT_READ, 1);
   }
 
-  rd.line_info = safe_malloc(sizeof(struct Line) * (rd.max_line = LINES));
+  rd.max_line = col_max * LINES;
+  rd.line_info = safe_malloc(sizeof(struct Line) * rd.max_line);
   for (i = 0; i < rd.max_line; i++)
   {
     memset(&rd.line_info[i], 0, sizeof(struct Line));
@@ -2244,6 +2351,7 @@ int mutt_pager(const char *banner, const char *fname, int flags, struct Pager *e
       SigWinch = 0;
       mutt_resize_screen();
       clearok(stdscr, TRUE); /* force complete redraw */
+      dprint (2, (debugfile, "pager: sigwinch\n"));
 
       if (flags & MUTT_PAGER_RETWINCH)
       {
