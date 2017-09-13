@@ -1876,7 +1876,7 @@ static void pager_menu_redraw(struct Menu *pager_menu)
   if (pager_menu->redraw & REDRAW_FLOW)
   {
     /* FIXME: if something changes width, we need to go deeper, not just redraw */
-    if (0&& !(rd->flags & MUTT_PAGER_RETWINCH))
+    if (!(rd->flags & MUTT_PAGER_RETWINCH))
     {
       rd->lines = -1;
       for (i = 0; i <= rd->topline; i++)
@@ -1938,7 +1938,7 @@ static void pager_menu_redraw(struct Menu *pager_menu)
       int oldreflowwrap = ReflowWrap;
       int oldmarkers = option(OPT_MARKERS);
       int bodylen = rd->pager_window->rows;
-      int col_max = 0;
+      int col_max = 2;
 
       /* recompute in place for WINCH */
       if ((COLS
@@ -2144,7 +2144,7 @@ int mutt_pager(const char *banner, const char *fname, int flags, struct Pager *e
 
   struct PagerRedrawData rd;
 
-  int col_max;                         /* Number of columns */
+  int col_max = 2;                         /* Number of columns */
 
   /* compute here for first display */
   if ((COLS
